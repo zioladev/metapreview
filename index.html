@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>metapreview — URL → link cards, instantly</title>
+<meta name="description" content="Paste a URL. See exactly how its link preview card will render on X, Slack, and LinkedIn — and what's missing.">
+<meta property="og:title" content="metapreview — URL → link cards, instantly">
+<meta property="og:description" content="Paste a URL. See exactly how its link preview card will render — and what's missing.">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary_large_image">
+<style>
+  :root {
+    --ink: #1a1a1a;
+    --muted: #6b6b6b;
+    --faint: #9a9a9a;
+    --line: #e8e8e8;
+    --bg: #ffffff;
+    --wash: #f7f7f5;
+    --accent: #2b5cff;
+    --ok: #1a7f37;
+    --warn: #b7791f;
+    --bad: #cf222e;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif;
+    color: var(--ink);
+    background: var(--bg);
+    -webkit-font-smoothing: antialiased;
+  }
+  .topbar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 28px;
+    border-bottom: 1px solid var(--line);
+  }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 650; font-size: 15px; }
+  .brand .mark {
+    width: 22px; height: 22px; border-radius: 6px;
+    background: var(--ink); color: #fff;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 13px;
+  }
+  .brand small { color: var(--muted); font-weight: 450; }
+  .topbar button {
+    border: 1px solid var(--line); background: #fff; border-radius: 8px;
+    padding: 7px 14px; font-size: 13px; cursor: pointer; color: var(--ink);
+  }
+  .topbar button:hover { background: var(--wash); }
+  main { max-width: 1060px; margin: 0 auto; padding: 56px 28px 40px; }
+  h1 { font-size: 34px; letter-spacing: -0.02em; margin: 0 0 8px; font-weight: 700; }
+  h1 .arrow { color: var(--faint); font-weight: 400; }
+  .sub { color: var(--muted); font-size: 15px; margin: 0 0 28px; }
+  .urlrow { display: flex; gap: 10px; }
+  .urlrow input {
+    flex: 1; font-size: 15px; padding: 13px 16px;
+    border: 1px solid var(--line); border-radius: 10px; outline: none;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  .urlrow input:focus { border-color: var(--ink); }
+  .urlrow button {
+    background: var(--ink); color: #fff; border: 0; border-radius: 10px;
+    padding: 0 26px; font-size: 15px; font-weight: 600; cursor: pointer;
+  }
+  .urlrow button:hover { background: #000; }
+  .urlrow button:disabled { opacity: .55; cursor: default; }
+  .status { min-height: 22px; margin: 14px 2px 0; font-size: 13px; color: var(--muted); font-family: ui-monospace, Menlo, monospace; }
+  .status.err { color: var(--bad); }
+  #results { display: none; margin-top: 26px; }
+  .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+  @media (max-width: 860px) { .cards { grid-template-columns: 1fr; } }
+  .platform-label {
+    font-size: 11px; text-transform: uppercase; letter-spacing: .08em;
+    color: var(--faint); margin-bottom: 8px; font-weight: 650;
+  }
+  .card { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: #fff; }
+  .card .thumb { width: 100%; aspect-ratio: 1.91/1; object-fit: cover; display: block; background: var(--wash); }
+  .card .thumb.missing {
+    display: flex; align-items: center; justify-content: center;
+    color: var(--faint); font-size: 13px; aspect-ratio: 1.91/1; background: var(--wash);
+  }
+  .card .body { padding: 12px 14px; }
+  .card .domain { font-size: 12px; color: var(--faint); margin-bottom: 4px; }
+  .card .ctitle { font-size: 14.5px; font-weight: 650; line-height: 1.35; margin-bottom: 4px;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .card .cdesc { font-size: 13px; color: var(--muted); line-height: 1.45;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  /* slack-style horizontal card */
+  .card.slack { display: flex; }
+  .card.slack::before { content: ""; width: 4px; background: #e8e8e8; flex: none; }
+  .card.slack .thumb, .card.slack .thumb.missing { width: 88px; aspect-ratio: 1; flex: none; }
+  .card.slack .body { padding: 10px 12px; min-width: 0; }
+  .card.slack .ctitle { color: var(--accent); }
+  /* linkedin-style */
+  .card.li .body { background: var(--wash); }
+  .panels { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 18px; }
+  @media (max-width: 860px) { .panels { grid-template-columns: 1fr; } }
+  .panel { border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; }
+  .panel h3 { margin: 0 0 12px; font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: var(--faint); }
+  .diag { display: flex; gap: 10px; align-items: flex-start; padding: 8px 0; border-top: 1px solid var(--line); font-size: 13.5px; line-height: 1.5; }
+  .diag:first-of-type { border-top: 0; }
+  .dot { flex: none; width: 18px; height: 18px; border-radius: 50%; margin-top: 2px;
+    display: inline-flex; align-items: center; justify-content: center; font-size: 11px; color: #fff; font-weight: 700; }
+  .dot.ok { background: var(--ok); } .dot.warn { background: var(--warn); } .dot.bad { background: var(--bad); }
+  details.tags { font-size: 13px; }
+  details.tags summary { cursor: pointer; color: var(--muted); }
+  details.tags table { width: 100%; border-collapse: collapse; margin-top: 10px; font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
+  details.tags td { padding: 6px 8px; border-top: 1px solid var(--line); vertical-align: top; word-break: break-all; }
+  details.tags td:first-child { color: var(--accent); white-space: nowrap; }
+  footer {
+    border-top: 1px solid var(--line); margin-top: 56px; padding: 18px 28px;
+    display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+    font-size: 12.5px; color: var(--muted);
+  }
+  footer .stats { font-family: ui-monospace, Menlo, monospace; color: var(--accent); }
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="brand"><span class="mark">▦</span> metapreview <small>URL → link cards, instantly</small></div>
+    <button id="sampleBtn" type="button">Sample</button>
+  </div>
+
+  <main>
+    <h1>Paste a URL<span class="arrow"> → </span>see its link card</h1>
+    <p class="sub">How your page will look when shared on X, Slack, and LinkedIn — before you share it.</p>
+
+    <div class="urlrow">
+      <input id="urlInput" type="text" placeholder="https://example.com/article" autocomplete="off" spellcheck="false">
+      <button id="goBtn" type="button">Preview</button>
+    </div>
+    <div class="status" id="status"></div>
+
+    <div id="results">
+      <div class="cards">
+        <div>
+          <div class="platform-label">X / Twitter</div>
+          <div class="card" id="cardX"></div>
+        </div>
+        <div>
+          <div class="platform-label">Slack / iMessage</div>
+          <div class="card slack" id="cardSlack"></div>
+        </div>
+        <div>
+          <div class="platform-label">LinkedIn</div>
+          <div class="card li" id="cardLi"></div>
+        </div>
+      </div>
+
+      <div class="panels">
+        <div class="panel">
+          <h3>Diagnostics</h3>
+          <div id="diags"></div>
+        </div>
+        <div class="panel">
+          <h3>Extracted tags</h3>
+          <details class="tags" open>
+            <summary>Show all tags</summary>
+            <table id="tagTable"></table>
+          </details>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <footer>
+    <span>One tool: Bun fetches the page, parses the tags, renders the cards.</span>
+    <span class="stats" id="stats"></span>
+  </footer>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const input = $("urlInput"), goBtn = $("goBtn"), status = $("status");
+
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+function hostOf(u) { try { return new URL(u).hostname.replace(/^www\./, ""); } catch { return u; } }
+
+async function run() {
+  const url = input.value.trim();
+  if (!url) { status.textContent = "Paste a URL first."; status.className = "status err"; return; }
+  goBtn.disabled = true;
+  status.className = "status";
+  status.textContent = "fetching…";
+  $("results").style.display = "none";
+  try {
+    const res = await fetch("/api/preview?url=" + encodeURIComponent(url));
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || "Something went wrong.");
+    render(data);
+    status.textContent = "fetched " + hostOf(data.url) + " · HTTP " + data.status;
+    $("stats").textContent = data.ms + " ms · " + data.tagCount + " tags";
+  } catch (e) {
+    status.textContent = e.message;
+    status.className = "status err";
+    $("stats").textContent = "";
+  } finally {
+    goBtn.disabled = false;
+  }
+}
+
+function render(data) {
+  const t = data.tags;
+  const title = t.og.title || t.twitter.title || t.title || hostOf(data.url);
+  const desc = t.og.description || t.twitter.description || t.description || "";
+  const image = t.og.image || t.twitter.image || "";
+  const site = t.og.site_name || hostOf(data.url);
+  const img = (cls) => image
+    ? `<img class="${cls}" src="${esc(image)}" alt="" referrerpolicy="no-referrer" loading="lazy" onerror="this.outerHTML='<div class=&quot;${cls} missing&quot;>image failed to load</div>'">`
+    : `<div class="${cls} missing">no image tag found</div>`;
+
+  $("cardX").innerHTML =
+    img("thumb") +
+    `<div class="body"><div class="domain">${esc(hostOf(data.url))}</div>` +
+    `<div class="ctitle">${esc(title)}</div><div class="cdesc">${esc(desc)}</div></div>`;
+
+  $("cardSlack").innerHTML =
+    `<div class="body" style="flex:1"><div class="domain">${esc(site)}</div>` +
+    `<div class="ctitle">${esc(title)}</div><div class="cdesc">${esc(desc)}</div></div>` +
+    (image ? `<img class="thumb" src="${esc(image)}" alt="" referrerpolicy="no-referrer" loading="lazy" style="margin:10px 10px 10px 0;border-radius:8px" onerror="this.remove()">` : "");
+
+  $("cardLi").innerHTML =
+    img("thumb") +
+    `<div class="body"><div class="ctitle">${esc(title)}</div>` +
+    `<div class="domain">${esc(hostOf(data.url))}</div></div>`;
+
+  $("diags").innerHTML = data.diagnostics.map((d) =>
+    `<div class="diag"><span class="dot ${d.level}">${d.level === "ok" ? "✓" : "!"}</span><span>${esc(d.message)}</span></div>`
+  ).join("");
+
+  const rows = [];
+  const push = (k, v) => { if (v) rows.push(`<tr><td>${esc(k)}</td><td>${esc(v)}</td></tr>`); };
+  push("title", t.title);
+  push("meta description", t.description);
+  push("canonical", t.canonical);
+  push("favicon", t.favicon);
+  for (const [k, v] of Object.entries(t.og)) push("og:" + k, v);
+  for (const [k, v] of Object.entries(t.twitter)) push("twitter:" + k, v);
+  $("tagTable").innerHTML = rows.join("") || `<tr><td colspan="2">No tags found.</td></tr>`;
+
+  $("results").style.display = "block";
+  $("results").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+goBtn.addEventListener("click", run);
+input.addEventListener("keydown", (e) => { if (e.key === "Enter") run(); });
+$("sampleBtn").addEventListener("click", () => { input.value = "https://www.ziola.dev"; run(); });
+</script>
+</body>
+</html>
